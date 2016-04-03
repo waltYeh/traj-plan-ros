@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="r2d2" name="linker" type="linker" />
+  <node pkg="r2d2" name="commander" type="commander" />
+  <node pkg="r2d2" name="controller" type="controller" />
+</launch>
