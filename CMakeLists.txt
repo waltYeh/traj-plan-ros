@@ -37,7 +37,8 @@ add_library(commons SHARED src/commons.cpp)
 add_library(nurbs SHARED src/nurbs.cpp)
 add_executable(linker src/linker.cpp)
 target_link_libraries(linker
-  ${catkin_LIBRARIES} 
+  commons 
+ ${catkin_LIBRARIES} 
   wiringPi)
 add_dependencies(linker r2d2_cpp)
 

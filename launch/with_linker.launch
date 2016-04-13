@@ -1,4 +1,7 @@
 <launch>
+  <!-- 0-none, 1-states, 2-commands, 3-control_sp, 4-control_ff -->
+  <param name="auxSend" value="3" type="int" />
+
   <node pkg="r2d2" name="linker" type="linker" />
   <node pkg="r2d2" name="commander" type="commander" />
   <node pkg="r2d2" name="controller" type="controller" />

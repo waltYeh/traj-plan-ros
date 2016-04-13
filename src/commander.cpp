@@ -8,12 +8,10 @@
 #include <r2d2/states.h>
 #include <r2d2/control_sp.h>
 
-
 #include <stdio.h>
 #include <string.h>
 #include "nurbs.h"
 #include "commons.h"
-
 
 #define LOOP_RATE 125
 #define LOOP_PERIOD 8
@@ -68,6 +66,7 @@ struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0};
 struct _est est = {{0,0,0},{0,0,0},0};
 struct _cmd cmd = {0,0,0,{0,0,0,0,0,0}};
 struct _nurbs nbs;
+bool USB_connected = false;
 void planOkCallback(void)
 {
 	nbs.plan_ok = true;
@@ -95,6 +94,7 @@ void commandsCallback(const r2d2::commands msg)
 		else
 			cmd.commander_mode = WAITING_MODES;
 	}
+	USB_connected = true;
 }
 void statesCallback(const r2d2::states msg)
 {
@@ -221,6 +221,11 @@ int main(int argc, char **argv)
 	ros::Subscriber commands_sub = n.subscribe("commands",1000,commandsCallback);
 	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
 	ros::Rate loop_rate(LOOP_RATE);
+//	while(!USB_connected);//waiting for connection with autopilot
+	while(!USB_connected && ros::ok()){//waiting for connection with autopilot
+		ros::spinOnce();
+		loop_rate.sleep();
+	}
 	int count = 0;
 	reset_position_sp();
 	reset_yaw_sp();

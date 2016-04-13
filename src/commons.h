@@ -6,8 +6,11 @@ int constrain(int a, int b, int c);
 int dead_zone(int a, int b);
 float constrain_f(float a, float b, float c);
 float dead_zone_f(float a, float b);
+
+int mySerialOpen (const char *device, const int baud);
 #define GRAVITY 9810
 #define VEHICLE_MASS 1300
+
 
 //flight modes
 #define ACROBATIC 0

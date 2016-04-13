@@ -5,13 +5,14 @@
 #include <r2d2/commands.h>
 #include <r2d2/states.h>
 
+
 void commandsCallback(const r2d2::commands msg)
 {
 	short rc[6];
 	unsigned short mode = msg.flight_mode;
 	for(int i=0; i<6; i++)
 		rc[i] = msg.rc[i];
-	printf("\nmode: [%3x]",mode);
+/*	printf("\nmode: [%3x]",mode);
 	printf("\nrc:");
 	printf("\n%d",rc[0]);
 	printf("   %d",rc[1]);
@@ -19,7 +20,7 @@ void commandsCallback(const r2d2::commands msg)
 	printf("   %d",rc[3]);
 	printf("   %d",rc[4]);
 	printf("   %d",rc[5]);
-	fflush(stdout);
+	fflush(stdout);*/
 }
 void statesCallback(const r2d2::states msg)
 {
@@ -37,7 +38,7 @@ void statesCallback(const r2d2::states msg)
 	roll_Q  = atan2(2*q2*q3 + 2*q0*q1, 1-2*q1*q1-2*q2*q2)*57.3;
 	yaw_Q   = -atan2(2*q1*q2 - 2*q0*q3, -2*q1*q1 - 2*q3*q3 + 1)*57.3;
 
-/*	printf("\ntime stamp: [%d]",msg.time_stamp);
+	printf("\ntime stamp: [%d]",msg.time_stamp);
 	printf("\nx: [%f]",msg.x_est[0]);
 	printf("   y: [%f]",msg.y_est[0]);
 	printf("   z: [%f]",msg.z_est[0]);
@@ -55,7 +56,7 @@ void statesCallback(const r2d2::states msg)
 	printf("\nyaw_R: [%f]",yaw_R);	
 	printf("   yaw_Q: [%f]",yaw_Q);
 	fflush(stdout);
-*/
+
 }
 int main(int argc,char **argv)
 {

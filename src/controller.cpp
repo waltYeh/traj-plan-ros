@@ -69,11 +69,12 @@ struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0};
 struct _out out = {{0,0,0,0},0};
 struct _est est = {{0,0,0},{0,0,0},{0,0,1.0f},0};
 float R_sp[3][3];
-
+bool USB_connected = false;
 void commandsCallback(const r2d2::commands msg)
 {
 	flight_mode = msg.flight_mode;
 	last_flight_mode = msg.last_flight_mode;
+	USB_connected = true;
 }
 void statesCallback(const r2d2::states msg)
 {
@@ -237,6 +238,10 @@ int main(int argc, char **argv)
 	ros::Subscriber control_sp_sub = n.subscribe("control_sp",1000,control_spCallback);
 	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
 	ros::Rate loop_rate(125);
+	while(!USB_connected && ros::ok()){//waiting for connection with autopilot
+		ros::spinOnce();
+		loop_rate.sleep();
+	}
 	int count = 0;
 	reset_variables();
 	while (ros::ok()){
