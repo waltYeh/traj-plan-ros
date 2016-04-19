@@ -64,7 +64,7 @@ struct _cmd//only changeable in commandsCallback
 
 struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0};
 struct _est est = {{0,0,0},{0,0,0},0};
-struct _cmd cmd = {0,0,0,{0,0,0,0,0,0}};
+struct _cmd cmd = {0,1,1,{0,0,-1024,0,0,0}};
 struct _nurbs nbs;
 bool USB_connected = false;
 void planOkCallback(void)
@@ -94,7 +94,7 @@ void commandsCallback(const r2d2::commands msg)
 		else
 			cmd.commander_mode = WAITING_MODES;
 	}
-	USB_connected = true;
+//	USB_connected = true;
 }
 void statesCallback(const r2d2::states msg)
 {
@@ -105,6 +105,7 @@ void statesCallback(const r2d2::states msg)
 	est.vel[0] = msg.x_est[1];
 	est.vel[1] = msg.y_est[1];
 	est.vel[2] = msg.z_est[1];
+	USB_connected = true;
 }
 void reset_yaw_sp(void)
 {
@@ -221,7 +222,6 @@ int main(int argc, char **argv)
 	ros::Subscriber commands_sub = n.subscribe("commands",1000,commandsCallback);
 	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
 	ros::Rate loop_rate(LOOP_RATE);
-//	while(!USB_connected);//waiting for connection with autopilot
 	while(!USB_connected && ros::ok()){//waiting for connection with autopilot
 		ros::spinOnce();
 		loop_rate.sleep();
@@ -240,6 +240,35 @@ int main(int argc, char **argv)
 			if(cmd.flight_mode == RASP_NURBS_SEMI||cmd.flight_mode == RASP_NURBS_AUTO){
 				//TODO
 				//send a request to planner
+				RowVector3d Start;
+				Start(0) = est.pos[0];
+				Start(1) = est.pos[1];
+				Start(2) = est.pos[2];
+				Matrix<double, Dynamic, 3> Q;
+				Q.resize(14, 3);
+				Q << 
+				0,		0,		0, 
+				0,		3,		3,
+				0,		4.5,	3,
+				0,		6,		3, 
+				0,		7.5,	3,
+				0,		9,		3, 
+				0,		12,		3, 
+				3,		12,		3, 
+				3,		9,		3, 
+				3,		7.5,	3,
+				3,		6,		3, 
+				3,		4.5,	3,
+				3,		3,		3, 
+				3,		0,		3;
+				for(int i=0;i<14;i++){
+					Q(i,0) += Start(0);
+					Q(i,1) += Start(1);
+					Q(i,2) += Start(2);
+				}
+				waypts2nurbs(Q, nbs.P, nbs.Knots);
+				nbs.plan_ok = true;
+				nbs.u = 0;
 			}
 		}
 

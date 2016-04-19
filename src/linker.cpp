@@ -134,6 +134,7 @@ int main(int argc, char **argv)
 					memcpy(out_buf, out_head, 3);
 					memcpy(out_buf+3, &descriptor, 1);
 					memcpy(out_buf+4, &time_stamp, 4);
+					break;
 				}
 				case 'm':
 				{
@@ -152,6 +153,7 @@ int main(int argc, char **argv)
 					memcpy(out_buf+17, &_q2_sp, 4);
 					memcpy(out_buf+21, &_q3_sp, 4);
 					memcpy(out_buf+25, &_thrust_force, 4);
+					break;
 				}
 				default:
 				break;
