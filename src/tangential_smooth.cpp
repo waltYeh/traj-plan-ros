@@ -1,265 +1,297 @@
+#include "tangential_smooth.h"
+#include "std_msgs/String.h"
+#include <math.h>
+trpz::trpz()
+{
 
-class jerkOptim
+}
+trpz::~trpz()
 {
-public:
-  jerkOptim();
-  ~jerkOptim();
-  void trajectory_Paras_generation_i(int num, float p0, float pf, float T, Matrix<float, 3, 3>& Paras_matrix);
-  float j_optimal_calculate(int num, float alfa, float beta, float gamma, float t);
-  float a_optimal_calculate(int num, float alfa, float beta, float gamma, float t);
-  float v_optimal_calculate(int num, float alfa, float beta, float gamma, float t);
-  float p_optimal_calculate(int num, float alfa, float beta, float gamma, float t, float p0);
-};
-class accTrapez
-{
-public:
-  accTrapez();
-  ~accTrapez();
   
-};
-void trajectory_Paras_generation_i(int num, float p0, float pf, float T, Matrix<float, 3, 3>& Paras_matrix)//num 0,1,2 reoresents  x, y, z
-{
-  float v0 = 0, a0 = 0, vf = 0, af = 0;
-  MatrixXd delt_s(3,1);
-  delt_s(0,0) = af-a0;
-  delt_s(1,0) = vf-v0-a0*T;
-  delt_s(2,0) = pf-p0-v0*T-0.5*a0*T*T;
-
-  MatrixXd temp(3,3);
-  temp << 60/pow(T,3),-360/pow(T,4),720/pow(T,5),-24/pow(T,2),168/pow(T,3),-360/pow(T,4),3/T,-24/pow(T,2),60/pow(T,3);
-  //std::cout << temp;
-  MatrixXd const_paras(3,1);//(alfa,beta,gamma)
-  const_paras = temp * delt_s;
-  //std::cout << const_Paras_matrix;
-  Paras_matrix(num,0) = const_paras(0,0);
-  Paras_matrix(num,1) = const_paras(1,0);
-  Paras_matrix(num,2) = const_paras(2,0);
 }
 
-float j_optimal_calculate(int num, float alfa, float beta, float gamma, float t)
+int trpz::trpz_gen(
+  float length_given,
+  float max_v_given, float max_pitch_deg_given, float max_j_given
+  )
 {
-  return 0.5*alfa*t*t+beta*t+gamma;
-}
+  float max_a_given = 9.8 * tan(max_pitch_deg_given / 57.3f);
+  _max_j = max_j_given;
+  _nodes_t = VectorXf::Zero(8);
+  _nodes_p = VectorXf::Zero(8);
+  _nodes_v = VectorXf::Zero(8);
 
-float p_optimal_calculate(int num, float alfa, float beta, float gamma, float t, float p0)
-{
-  return alfa*pow(t,5)/120+beta*pow(t,4)/24+gamma*pow(t,3)/6+p0;
-}
-float p_simple_calculate(int num, float t, float vel, float p0)
-{
-  return p0 + vel * t;
-}
-float v_optimal_calculate(int num, float alfa, float beta, float gamma, float t)
-{
-  return alfa*pow(t,4)/24+beta*pow(t,3)/6+gamma*t*t/2;
-}
-
-float a_optimal_calculate(int num, float alfa, float beta, float gamma, float t)
-{
-  return alfa*pow(t,3)/6+beta*t*t/2+gamma*t;
-}
-
-int trapezoidalTraj(float start_pos, float ended_pos, 
-  float MAX_v, float MAX_pitch_deg, float MAX_j,
-  VectorXf& nodes_time, 
-  VectorXf& nodes_vel, 
-  VectorXf& nodes_pos, 
-  float* p_max_acc)
-
-{
-  float MAX_a = 9.8*tan(MAX_pitch_deg/57.3f);
-  float max_v, max_a, max_j = MAX_j;
-  VectorXf nodes_t = VectorXf::Zero(8);
-  VectorXf nodes_p = VectorXf::Zero(8);
-  VectorXf nodes_v = VectorXf::Zero(8);
+  _len = length_given;
+  _stage = 1;
   VectorXf blocks_t = VectorXf::Zero(7);
-  float duration_amax = MAX_v / MAX_a - MAX_a / MAX_j;
-  float total_length = ended_pos - start_pos;
-  float duration_vmax = (total_length - (1 / MAX_a * MAX_v * MAX_v + MAX_a / MAX_j * MAX_v)) / MAX_v;
+  float duration_amax = max_v_given / max_a_given - max_a_given / max_j_given;
+  float duration_vmax = (_len - (1.0 / max_a_given * max_v_given * max_v_given + max_a_given / max_j_given * max_v_given)) / max_v_given;
+  
   if(duration_amax<0 && duration_vmax>0){
-    // ROS_INFO("MAX_a unreachable");
-    max_a = sqrt(MAX_j * (MAX_v));
-    max_v = MAX_v;
+//    ROS_INFO("MAX_a unreachable");
+    _max_a = sqrt(max_j_given * (max_v_given));
+    _max_v = max_v_given;
     blocks_t(1) = 0;
-    duration_vmax = (total_length - (1 / max_a * max_v * max_v + max_a / MAX_j * max_v)) / max_v;
+    duration_vmax = (_len - (1 / _max_a * _max_v * _max_v + _max_a / _max_j * _max_v)) / _max_v;
     if (duration_vmax<0){
         duration_vmax = 0;
-      //   ROS_INFO("MAX_v unreachable");
-      // ROS_INFO("Please use Muellers method");
+//        ROS_INFO("MAX_v unreachable");
+//      ROS_INFO("Please use Muellers method");
       return 1;
     }
     blocks_t(3) = duration_vmax;
   }
   else if(duration_amax>0 && duration_vmax<0){
-    // ROS_INFO("MAX_v unreachable");
-    // ROS_INFO("Please use Muellers method");
-    return 1;
+//    ROS_INFO("MAX_v unreachable");
+//    ROS_INFO("Please use Muellers method");
+    return 2;
   }
   else if(duration_amax<0 && duration_vmax<0){
-    // ROS_INFO("Both MAX_a and MAX_v unreachable");
-    // ROS_INFO("Please use Muellers method");
-    return 1;
+//    ROS_INFO("Both MAX_a and MAX_v unreachable");
+//    ROS_INFO("Please use Muellers method");
+    return 3;
   }
   else{
     blocks_t(1) = duration_amax;
     blocks_t(3) = duration_vmax;
-    max_a = MAX_a;
-    max_v = MAX_v;
+    _max_a = max_a_given;
+    _max_v = max_v_given;
   }
-  blocks_t(0) = max_a / max_j;
+  blocks_t(0) = _max_a / _max_j;
   blocks_t(2) = blocks_t(0);
   blocks_t(4) = blocks_t(2);
   blocks_t(5) = blocks_t(1);
   blocks_t(6) = blocks_t(0);
-  nodes_t(0) = 0;
+  _nodes_t(0) = 0;
   for(int i = 1; i < 8; i++)
-    nodes_t(i) = nodes_t(i - 1) + blocks_t(i - 1);
-  nodes_v(0) = 0;
-  nodes_v(1) = nodes_v(0) + max_j * blocks_t(0) * blocks_t(0) / 2;
-  nodes_v(2) = nodes_v(1) + max_a * blocks_t(1);
-  nodes_v(3) = nodes_v(2) + max_a * blocks_t(2) - max_j * blocks_t(2) * blocks_t(2) / 2;
-  nodes_v(4) = nodes_v(3);
-  nodes_v(5) = nodes_v(4) - max_j * blocks_t(4) * blocks_t(4) / 2;
-  nodes_v(6) = nodes_v(5) - max_a * blocks_t(5);
-  nodes_v(7) = 0;
-  nodes_p(0) = start_pos;
-  nodes_p(1) = nodes_p(0) + nodes_v(0) * blocks_t(0) + max_j * blocks_t(0) * blocks_t(0) * blocks_t(0)/6;
-  nodes_p(2) = nodes_p(1) + nodes_v(1) * blocks_t(1) + max_a * blocks_t(1) * blocks_t(1) / 2;
-  nodes_p(3) = nodes_p(2) + nodes_v(2) * blocks_t(2) + max_a * blocks_t(2) * blocks_t(2) / 2 - max_j * blocks_t(2) * blocks_t(2) * blocks_t(2) / 6;
-  nodes_p(4) = nodes_p(3) + nodes_v(3) * blocks_t(3);
-  nodes_p(5) = nodes_p(4) + nodes_v(4) * blocks_t(4) - max_j * blocks_t(4) * blocks_t(4) * blocks_t(4)/6;
-  nodes_p(6) = nodes_p(5) + nodes_v(5) * blocks_t(5) - max_a * blocks_t(5) * blocks_t(5) / 2;
-  nodes_p(7) = ended_pos;
-  nodes_time = nodes_t;
-  nodes_vel = nodes_v;
-  nodes_pos = nodes_p;
-  *p_max_acc = max_a;
+    _nodes_t(i) = _nodes_t(i - 1) + blocks_t(i - 1);
+  _nodes_v(0) = 0;
+  _nodes_v(1) = _nodes_v(0) + _max_j * blocks_t(0) * blocks_t(0) / 2;
+  _nodes_v(2) = _nodes_v(1) + _max_a * blocks_t(1);
+  _nodes_v(3) = _nodes_v(2) + _max_a * blocks_t(2) - _max_j * blocks_t(2) * blocks_t(2) / 2;
+  _nodes_v(4) = _nodes_v(3);
+  _nodes_v(5) = _nodes_v(4) - _max_j * blocks_t(4) * blocks_t(4) / 2;
+  _nodes_v(6) = _nodes_v(5) - _max_a * blocks_t(5);
+  _nodes_v(7) = 0;
+  _nodes_p(0) = 0;
+  _nodes_p(1) = _nodes_p(0) + _nodes_v(0) * blocks_t(0) + _max_j * blocks_t(0) * blocks_t(0) * blocks_t(0)/6;
+  _nodes_p(2) = _nodes_p(1) + _nodes_v(1) * blocks_t(1) + _max_a * blocks_t(1) * blocks_t(1) / 2;
+  _nodes_p(3) = _nodes_p(2) + _nodes_v(2) * blocks_t(2) + _max_a * blocks_t(2) * blocks_t(2) / 2 - _max_j * blocks_t(2) * blocks_t(2) * blocks_t(2) / 6;
+  _nodes_p(4) = _nodes_p(3) + _nodes_v(3) * blocks_t(3);
+  _nodes_p(5) = _nodes_p(4) + _nodes_v(4) * blocks_t(4) - _max_j * blocks_t(4) * blocks_t(4) * blocks_t(4)/6;
+  _nodes_p(6) = _nodes_p(5) + _nodes_v(5) * blocks_t(5) - _max_a * blocks_t(5) * blocks_t(5) / 2;
+  _nodes_p(7) = _len;
   return 0;
 }
-float jerkPlan(float max_jerk, int stage)
+float trpz::jerkPlan(float t)
 {
   float jerk = 0;
-  switch (stage){
+  switch (_stage){
   case 1:
-    jerk = max_jerk;
+    jerk = _max_j;
   break;
   case 2:
     jerk = 0;
   break;
   case 3:
-    jerk = -max_jerk;
+    jerk = -_max_j;
   break;
   case 4:
     jerk = 0;
   break;
   case 5:
-    jerk = -max_jerk;
+    jerk = -_max_j;
   break;
   case 6:
     jerk = 0;
   break;
   case 7:
-    jerk = max_jerk;
+    jerk = _max_j;
   break;
   default:
   break;
   }
   return jerk;
 }
-float accPlan(float max_jerk, float max_acc, float t, 
-  int stage, const VectorXf& nodes_time)
+float trpz::accPlan(float t)
 {
-  float tau = t - nodes_time(stage - 1);
+  float tau = t - _nodes_t(_stage - 1);
   float acc = 0;
-  switch (stage){
+  switch (_stage){
   case 1:
-    acc = max_jerk * tau;
+    acc = _max_j * tau;
   break;
   case 2:
-    acc = max_acc;
+    acc = _max_a;
   break;
   case 3:
-    acc = max_acc - max_jerk * tau;
+    acc = _max_a - _max_j * tau;
   break;
   case 4:
     acc = 0;
   break;
   case 5:
-    acc = -max_jerk * tau;
+    acc = -_max_j * tau;
   break;
   case 6:
-    acc = -max_acc;
+    acc = -_max_a;
   break;
   case 7:
-    acc = -max_acc + max_jerk * tau;
+    acc = -_max_a + _max_j * tau;
   break;
   default:
   break;
   }
   return acc;
 }
-float velPlan(float max_jerk, float max_acc, float t, 
-  int stage, const VectorXf& nodes_time, const VectorXf& nodes_vel)
+float trpz::velPlan(float t)
 {
-  float tau = t - nodes_time(stage - 1);
+  float tau = t - _nodes_t(_stage - 1);
   float vel = 0;
-  switch (stage){
+  switch (_stage){
   case 1:
-    vel = nodes_vel(0) + max_jerk * tau * tau / 2;
+    vel = _nodes_v(0) + _max_j * tau * tau / 2;
   break;
   case 2:
-    vel = nodes_vel(1) + max_acc * tau;
+    vel = _nodes_v(1) + _max_a * tau;
   break;
   case 3:
-    vel = nodes_vel(2) + max_acc * tau - max_jerk * tau * tau / 2;
+    vel = _nodes_v(2) + _max_a * tau - _max_j * tau * tau / 2;
   break;
   case 4:
-    vel = nodes_vel(3);
+    vel = _nodes_v(3);
   break;
   case 5:
-    vel = nodes_vel(4) - max_jerk * tau * tau / 2;
+    vel = _nodes_v(4) - _max_j * tau * tau / 2;
   break;
   case 6:
-    vel = nodes_vel(5) - max_acc * tau;
+    vel = _nodes_v(5) - _max_a * tau;
   break;
   case 7:
-    vel = nodes_vel(6) - max_acc * tau + max_jerk * tau * tau / 2;
+    vel = _nodes_v(6) - _max_a * tau + _max_j * tau * tau / 2;
   break;
   default:
   break;
   }
   return vel;
 }
-float posPlan(float max_jerk, float max_acc, float t, 
-  int stage, const VectorXf& nodes_time, 
-  const VectorXf& nodes_vel, const VectorXf& nodes_pos)
+float trpz::posPlan(float t)
 {
-  float tau = t - nodes_time(stage - 1);
-  float pos = nodes_pos(7);
-  switch (stage){
+  float tau = t - _nodes_t(_stage - 1);
+  float pos = 0;
+  switch (_stage){
   case 1:
-    pos = nodes_pos(0) + nodes_vel(0) * tau + max_jerk * tau * tau * tau / 6;
+    pos = _nodes_p(0) + _nodes_v(0) * tau + _max_j * tau * tau * tau / 6;
   break;
   case 2:
-    pos = nodes_pos(1) + nodes_vel(1) * tau + max_acc * tau * tau / 2;
+    pos = _nodes_p(1) + _nodes_v(1) * tau + _max_a * tau * tau / 2;
   break;
   case 3:
-    pos = nodes_pos(2) + nodes_vel(2) * tau + max_acc * tau * tau / 2 - max_jerk * tau * tau * tau / 6;
+    pos = _nodes_p(2) + _nodes_v(2) * tau + _max_a * tau * tau / 2 - _max_j * tau * tau * tau / 6;
   break;
   case 4:
-    pos = nodes_pos(3) + nodes_vel(3) * tau;
+    pos = _nodes_p(3) + _nodes_v(3) * tau;
   break;
   case 5:
-    pos = nodes_pos(4) + nodes_vel(4) * tau - max_jerk * tau * tau * tau / 6;
+    pos = _nodes_p(4) + _nodes_v(4) * tau - _max_j * tau * tau * tau / 6;
   break;
   case 6:
-    pos = nodes_pos(5) + nodes_vel(5) * tau - max_acc * tau * tau / 2;
+    pos = _nodes_p(5) + _nodes_v(5) * tau - _max_a * tau * tau / 2;
   break;
   case 7:
-    pos = nodes_pos(6) + nodes_vel(6) * tau - max_acc * tau * tau / 2 + max_jerk * tau * tau * tau / 6;
+    pos = _nodes_p(6) + _nodes_v(6) * tau - _max_a * tau * tau / 2 + _max_j * tau * tau * tau / 6;
   break;
   default:
+    pos = _nodes_p(7);
   break;
   }
   return pos;
+}
+int trpz::allPlan(float t, Vector4f& javp)
+{
+  if(t > _nodes_t(_stage)){
+    _stage++;
+  }
+  if(_stage > 7){
+    return 0;//finished
+  }
+  javp(0) = jerkPlan(t);
+  javp(1) = accPlan(t);
+  javp(2) = velPlan(t);
+  javp(3) = posPlan(t);
+  return 1;
+}
+
+
+jopt::jopt()
+{
+
+}
+jopt::~jopt()
+{
+
+}
+int jopt::jopt_gen(
+    const Vector3f& pi, const Vector3f& vi, const Vector3f& ai,
+    const Vector3f& pf, const Vector3f& vf, const Vector3f& af,
+    float duration
+    )
+{
+  _duration = duration;
+  for(int i = 0; i < 3; i++){
+    _initState(i, 0) = pi(i);
+    _initState(i, 1) = vi(i);
+    _initState(i, 2) = ai(i);
+  }
+  for(int i = 0; i < 3; i++){
+    Vector3f delt_s;
+    delt_s(0) = af(i)-ai(i);
+    delt_s(1) = vf(i)-vi(i)-ai(i)*duration;
+    delt_s(2) = pf(i)-pi(i)-vi(i)*duration-0.5*ai(i)*duration*duration;
+
+    Matrix<float, 3, 3> temp;
+    temp << 
+      60/pow(duration,3),-360/pow(duration,4),720/pow(duration,5),
+      -24/pow(duration,2),168/pow(duration,3),-360/pow(duration,4),
+      3/duration,-24/pow(duration,2),60/pow(duration,3);
+    //std::cout << temp;
+    Vector3f const_paras;//(alfa,beta,gamma)
+    const_paras = temp * delt_s;
+    //std::cout << const_Paras_matrix;
+    _param(i,0) = const_paras(0);
+    _param(i,1) = const_paras(1);
+    _param(i,2) = const_paras(2);
+  }
+//  std::cout << _param;
+}
+
+
+float jopt::jerkPlan(int axis, float t)
+{
+  return 0.5*_param(axis, 0)*t*t+_param(axis, 1)*t+_param(axis, 2);
+}
+float jopt::accPlan(int axis, float t)
+{
+  return _param(axis, 0)*pow(t,3)/6+_param(axis, 1)*t*t/2+_param(axis, 2)*t+_initState(axis, 2);
+}
+float jopt::velPlan(int axis, float t)
+{
+  return _param(axis, 0)*pow(t,4)/24+_param(axis, 1)*pow(t,3)/6+_param(axis, 2)*t*t/2+_initState(axis, 2)*t+_initState(axis, 1);
+}
+float jopt::posPlan(int axis, float t)
+{
+  return _param(axis, 0)*pow(t,5)/120+_param(axis, 1)*pow(t,4)/24+_param(axis, 2)*pow(t,3)/6+_initState(axis, 2)*t*t/2+_initState(axis, 1)*t+_initState(axis, 0);
+}
+
+int jopt::allPlan(float t, Matrix<float, 3, 4>& javp)
+{
+  if(t > _duration)
+    return 0;
+  for(int i = 0; i < 3; i++){
+    javp(i, 0) = jerkPlan(i, t);
+    javp(i, 1) = accPlan(i, t);
+    javp(i, 2) = velPlan(i, t);
+    javp(i, 3) = posPlan(i, t);
+  }
+  return 1;
 }
