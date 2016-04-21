@@ -1,10 +1,17 @@
 #include "nurbs.h"
 #include "std_msgs/String.h"
-int p = 4;
+nurbs::nurbs()
+{
+	p = 4;
+	_u = 0;
+}
+nurbs::~nurbs()
+{
+
+}
 // 4th order NURBS is jerk continuous,
 // that is to say angular velocity of UAV continuous
-double getBaseFunVal(double u, int i, int k, 
-	const Matrix<double, Dynamic, 3>& P, const VectorXd& Knots)
+double nurbs::getBaseFunVal(double u, int i, int k)
 {
 	double Val = 0.0;
 	double val1 = 0.0;
@@ -38,15 +45,14 @@ double getBaseFunVal(double u, int i, int k,
 				beta = 0.0;
 			else
 				beta = (Knots(i + k + 1) - u) / denTemp;
-			val1 = alpha * getBaseFunVal(u,i,k-1,P,Knots);
-			val2 = beta * getBaseFunVal(u,i+1,k-1,P,Knots);
+			val1 = alpha * getBaseFunVal(u,i,k-1);
+			val2 = beta * getBaseFunVal(u,i+1,k-1);
 			Val = val1 + val2;
 		}
 	}
 	return Val;
 }
-double getDerivative(double u, int i, int k, int l, 
-	const Matrix<double, Dynamic, 3>& P, const VectorXd& Knots)
+double nurbs::getDerivative(double u, int i, int k, int l)
 {
 	double denTemp, val1, val2;
 	if (l == 1) {
@@ -54,24 +60,24 @@ double getDerivative(double u, int i, int k, int l,
 		if (denTemp == 0)
 			val1 = 0;
 		else
-			val1 = getBaseFunVal(u, i, k - 1,P,Knots) / denTemp;
+			val1 = getBaseFunVal(u, i, k - 1) / denTemp;
 		denTemp = Knots(i + k + 1) - Knots(i + 1);
 		if (denTemp == 0)
 			val2 = 0;
 		else
-			val2 = getBaseFunVal(u, i + 1, k - 1,P,Knots) / denTemp;		
+			val2 = getBaseFunVal(u, i + 1, k - 1) / denTemp;		
 	}
 	else {
 		denTemp = Knots(i + k) - Knots(i);
 		if (denTemp == 0)
 			val1 = 0;
 		else
-			val1 = getDerivative(u, i, k-1, l - 1,P,Knots) / denTemp;
+			val1 = getDerivative(u, i, k-1, l - 1) / denTemp;
 		denTemp = Knots(i + k + 1) - Knots(i + 1);
 		if (denTemp == 0)
 			val2 = 0;
 		else
-			val2 = getDerivative(u, i + 1, k-1, l - 1,P,Knots) / denTemp;
+			val2 = getDerivative(u, i + 1, k-1, l - 1) / denTemp;
 	}
 	return (k * (val1 - val2));
 }
@@ -79,27 +85,26 @@ double getDerivative(double u, int i, int k, int l,
 //changed hier in the process of interpolation
 //the function returns pos_sp, vel_ff, acc_ff in a 3*3 matrix
 //Ref Dr. Dong 6-27
-Matrix<double, 3, 3> psp_vff_aff_interp(double *u, double V, double Ts, 
-	const Matrix<double, Dynamic, 3>& P, const VectorXd& Knots)
+Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts)
 {
 	static double last_V = 0, last_k = 1;
 	//last_k cannot be 0 at first
 	int n = P.rows() - 1;
-	double curr_u = *u;
+	double curr_u = _u;
 	RowVectorXd N = RowVectorXd::Zero(n+1);
 	RowVectorXd dN = RowVectorXd::Zero(n+1);
 	RowVectorXd ddN = RowVectorXd::Zero(n+1);
 	for (int m = 0; m < n+1; m++) {
-		N(m) = getBaseFunVal(curr_u, m, p,P,Knots);
-		ddN(m) = getDerivative(curr_u, m, p, 2,P,Knots);
-		dN(m) = getDerivative(curr_u, m, p, 1,P,Knots);
+		N(m) = getBaseFunVal(curr_u, m, p);
+		ddN(m) = getDerivative(curr_u, m, p, 2);
+		dN(m) = getDerivative(curr_u, m, p, 1);
 	}
 	Vector3d C = N * P;
 	Vector3d C_u = dN * P;
 	Vector3d C_uu = ddN * P;
 	Vector3d pos_sp = C;
 	double k = C_u.norm();
-	Vector3d vel_ff = C_u * V * k;
+	Vector3d vel_ff = C_u * V / k;
 	double V_k = V / k;
 	double B = -V * V * C_u.dot(C_uu) / k / k / k / k;
 	double new_u = curr_u + V_k * Ts + B * Ts * Ts / 2;
@@ -121,15 +126,14 @@ Matrix<double, 3, 3> psp_vff_aff_interp(double *u, double V, double Ts,
 	last_V = V;
 	last_k = k;
 	
-	*u = new_u;
+	_u = new_u;
 	Matrix<double, 3, 3> retVal;//[pos,vel,acc]
 	retVal.col(0) = pos_sp;
 	retVal.col(1) = vel_ff;
 	retVal.col(2) = acc_ff;
 	return retVal;
 }
-void waypts2nurbs (const Matrix<double, Dynamic, 3>& Q, 
-	Matrix<double, Dynamic, 3>& P, VectorXd& Knots)
+void nurbs::waypts2nurbs (const Matrix<double, Dynamic, 3>& Q)
 {
 	int n = Q.rows() - 1;
 	P.resize(n+1, 3);
@@ -149,13 +153,13 @@ void waypts2nurbs (const Matrix<double, Dynamic, 3>& Q,
 	for (int i = 1; i < n - p + 1; i++) {
 		VectorXd para_i = params.segment(i, p);
 		Knots(p + i) = 1 / (double)p * para_i.sum();
-		double pri = Knots(p + i);
 	}
 	Knots.tail(p + 1) = VectorXd::Ones(p + 1);
+	Knots.head(p + 1) = VectorXd::Zero(p + 1);
 	MatrixXd PHY(n + 1, n + 1);
 	for (int i = 0; i < n + 1; i++) {
 		for (int j = 0; j < n + 1; j++) {
-			PHY(i, j) = getBaseFunVal(params(i), j, p,P,Knots);
+			PHY(i, j) = getBaseFunVal(params(i), j, p);
 		}
 	}
 	MatrixXd PHY_t = PHY.transpose();
@@ -163,7 +167,6 @@ void waypts2nurbs (const Matrix<double, Dynamic, 3>& Q,
 	MatrixXd PHY_LU = PHY_t_PHY.lu() .solve(PHY_t);
 	P = PHY_LU * Q;
 }
-
 /*
 Vector3d vel_feedforward(double u, double V)
 {

@@ -7,6 +7,19 @@ using namespace Eigen;
 //Vector3d acc_feedforward(double u, double V);
 //double interpolation (double u, double V, double Ts);
 //Vector3d acc_feedforward_interpolation(double *u, double V, double Ts);
-Matrix<double, 3, 3> psp_vff_aff_interp(double *u, double V, double Ts, const Matrix<double, Dynamic, 3>& P, const VectorXd& Knots);
-void waypts2nurbs (const RowVector3d& start_pt, const Matrix<double, Dynamic, 3>& Q, Matrix<double, Dynamic, 3>& P, VectorXd& Knots);
+class nurbs
+{
+public:
+	nurbs();
+	~nurbs();
+	double _u;
+	Matrix<double, 3, 3> psp_vff_aff_interp(double V, double Ts);
+	void waypts2nurbs (const Matrix<double, Dynamic, 3>& Q);
+private:
+	int p;
+	Matrix<double, Dynamic, 3> P;
+	VectorXd Knots;
+	double getBaseFunVal(double u, int i, int k);
+	double getDerivative(double u, int i, int k, int l);
+};
 #endif
