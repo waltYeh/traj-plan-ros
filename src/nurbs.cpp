@@ -85,7 +85,7 @@ double nurbs::getDerivative(double u, int i, int k, int l)
 //changed hier in the process of interpolation
 //the function returns pos_sp, vel_ff, acc_ff in a 3*3 matrix
 //Ref Dr. Dong 6-27
-Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts)
+Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan_acc_ff)
 {
 	static double last_V = 0, last_k = 1;
 	//last_k cannot be 0 at first
@@ -122,7 +122,10 @@ Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts)
 		a_u = 0;
 	}
 	Vector3d tangential_acc = C_u * a_u;
-	Vector3d acc_ff = normal_acc + tangential_acc;
+	Vector3d acc_ff = normal_acc;
+	if(use_tan_acc_ff){
+		acc_ff += tangential_acc;
+	}
 	last_V = V;
 	last_k = k;
 	

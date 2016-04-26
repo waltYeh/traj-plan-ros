@@ -45,6 +45,7 @@ unsigned char usb_in_flag = 0;
 unsigned char rcv[64];
 float q_sp[4];
 float thrust_force;
+unsigned int output_timestamp = 0;
 
 
 void usb_in_interrupt(void)
@@ -61,6 +62,7 @@ void outputCallback(const r2d2::output msg)
 	for(int i = 0; i < 4; i++)
 		q_sp[i] = msg.q_sp[i];
 	thrust_force = msg.thrust_force;
+	output_timestamp = msg.time_stamp;
 }
 void control_spCallback(const r2d2::control_sp msg)
 {
@@ -81,10 +83,10 @@ int main(int argc, char **argv)
 	ros::NodeHandle n;
 	int aux_send = 0;
 	n.getParam("/auxSend", aux_send);
-	ros::Publisher states_pub = n.advertise<r2d2::states>("states",1000);
-	ros::Publisher commands_pub = n.advertise<r2d2::commands>("commands",1000);
-	ros::Subscriber output_sub = n.subscribe("output",1000,outputCallback);
-	ros::Subscriber control_sp_sub = n.subscribe("control_sp",1000,control_spCallback);
+	ros::Publisher states_pub = n.advertise<r2d2::states>("states",5);
+	ros::Publisher commands_pub = n.advertise<r2d2::commands>("commands",5);
+	ros::Subscriber output_sub = n.subscribe("output",5,outputCallback);
+	ros::Subscriber control_sp_sub = n.subscribe("control_sp",5,control_spCallback);
 	ros::Rate loop_rate(PROGRAM_FREQ);
 	int count = 0;
 	int port_desc;
@@ -127,7 +129,7 @@ int main(int argc, char **argv)
 			unsigned char check_length;
 			unsigned short check_sum = 0;
 			unsigned char descriptor = 'm';
-			unsigned int time_stamp = 2048;
+			unsigned int time_stamp = output_timestamp;
 			switch(descriptor){
 				case 'i':
 				{
@@ -172,21 +174,23 @@ int main(int argc, char **argv)
 				break;
 				case 3://control sp
 				{	
-					int pos_sp_i[3], vel_sp_i[3];
+					short pos_sp_i[3], vel_ff_i[3], acc_ff_i[3];
 					for(int i=0;i<3;i++){
-						pos_sp_i[i] = pos_sp[i];
-						vel_sp_i[i] = vel_sp[i];
+						pos_sp_i[i] = ctrl.pos_sp[i];
+						vel_ff_i[i] = ctrl.vel_ff[i];
+						acc_ff_i[i] = ctrl.acc_ff[i];
 					}
-					memcpy(out_buf+32, pos_sp_i, 12);
-					memcpy(out_buf+44, vel_sp_i, 12);
+					memcpy(out_buf+32, pos_sp_i, 6);
+					memcpy(out_buf+38, vel_ff_i, 6);
+					memcpy(out_buf+44, acc_ff_i, 6);
 					break;
 				}
 				case 4://control ff
 				{
 					int vel_ff_i[3], acc_ff_i[3];
 					for(int i=0;i<3;i++){
-						vel_ff_i[i] = vel_ff[i];
-						acc_ff_i[i] = acc_ff[i];
+						vel_ff_i[i] = ctrl.vel_ff[i];
+						acc_ff_i[i] = ctrl.acc_ff[i];
 					}
 					memcpy(out_buf+32, vel_ff_i, 12);
 					memcpy(out_buf+44, acc_ff_i, 12);

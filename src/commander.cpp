@@ -23,17 +23,13 @@
 #define NURBS_AUTO 4
 struct _nurbs
 {
-	//mode switch between 2 nurbs modes are not allowed!!!
-	//do this in autopilot mode-rc defination!!!
-
 	bool plan_ok;
-	//set at planner callback
-	//cleared at any mode changes
 	float v_plan;
-	double u;
-	Matrix<double, Dynamic, 3> P;
-	VectorXd Knots;
 };
+
+//set at 
+//cleared at any mode changes
+
 struct _ctrl
 {
 	float pos_sp[3];
@@ -52,6 +48,7 @@ struct _est//only changeable in statesCallback
 	float pos[3];
 	float vel[3];
 	float yaw;
+	unsigned int timestamp;
 };
 struct _cmd//only changeable in commandsCallback
 {
@@ -59,12 +56,13 @@ struct _cmd//only changeable in commandsCallback
 	unsigned short flight_mode;//corresponds to switches
 	unsigned short last_flight_mode;
 	short rc[6];
+	unsigned int timestamp;
 };
 
 
 struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0};
-struct _est est = {{0,0,0},{0,0,0},0};
-struct _cmd cmd = {0,1,1,{0,0,-1024,0,0,0}};
+struct _est est = {{0,0,0},{0,0,0},0,0};
+struct _cmd cmd = {0,1,1,{0,0,-1024,0,0,0},0};
 struct _nurbs nbs;
 bool USB_connected = false;
 void planOkCallback(void)
@@ -74,6 +72,7 @@ void planOkCallback(void)
 }
 void commandsCallback(const r2d2::commands msg)
 {
+	cmd.timestamp = msg.time_stamp;
 	for(int i = 0; i < 6; i++)
 		cmd.rc[i] = msg.rc[i];
 	cmd.flight_mode = msg.flight_mode;
@@ -98,6 +97,7 @@ void commandsCallback(const r2d2::commands msg)
 }
 void statesCallback(const r2d2::states msg)
 {
+	est.timestamp = msg.time_stamp;
 	est.yaw = msg.yaw;
 	est.pos[0] = msg.x_est[0];
 	est.pos[1] = msg.y_est[0];
@@ -216,11 +216,12 @@ Then "commander" publish the sp and ff to let "controller" do the controls
 ****************/
 int main(int argc, char **argv)
 {
+	nurbs nurbs1;
 	ros::init(argc, argv, "commander");
 	ros::NodeHandle n;
-	ros::Publisher control_sp_pub = n.advertise<r2d2::control_sp>("control_sp",1000);
-	ros::Subscriber commands_sub = n.subscribe("commands",1000,commandsCallback);
-	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
+	ros::Publisher control_sp_pub = n.advertise<r2d2::control_sp>("control_sp",5);
+	ros::Subscriber commands_sub = n.subscribe("commands",5,commandsCallback);
+	ros::Subscriber states_sub = n.subscribe("states",5,statesCallback);
 	ros::Rate loop_rate(LOOP_RATE);
 	while(!USB_connected && ros::ok()){//waiting for connection with autopilot
 		ros::spinOnce();
@@ -234,16 +235,15 @@ int main(int argc, char **argv)
 		//mode change
 		if(cmd.last_flight_mode != cmd.flight_mode){
 			reset_position_sp();
-			nbs.u = 0.0;
 			nbs.v_plan = 0.0;
 			nbs.plan_ok = false;//nurbs needs to be replanned each time
 			if(cmd.flight_mode == RASP_NURBS_SEMI||cmd.flight_mode == RASP_NURBS_AUTO){
 				//TODO
 				//send a request to planner
 				RowVector3d Start;
-				Start(0) = est.pos[0];
-				Start(1) = est.pos[1];
-				Start(2) = est.pos[2];
+				Start(0) = est.pos[0]/1000.0;
+				Start(1) = est.pos[1]/1000.0;
+				Start(2) = est.pos[2]/1000.0;
 				Matrix<double, Dynamic, 3> Q;
 				Q.resize(14, 3);
 				Q << 
@@ -266,9 +266,8 @@ int main(int argc, char **argv)
 					Q(i,1) += Start(1);
 					Q(i,2) += Start(2);
 				}
-				waypts2nurbs(Q, nbs.P, nbs.Knots);
+				nurbs1.waypts2nurbs(Q);
 				nbs.plan_ok = true;
-				nbs.u = 0;
 			}
 		}
 
@@ -296,7 +295,12 @@ int main(int argc, char **argv)
 		if(cmd.commander_mode == NURBS_SEMI || cmd.commander_mode == NURBS_AUTO){
 			rc_yaw(LOOP_PERIOD);
 			Matrix<double, 3, 3> psp_vff_aff;
-			psp_vff_aff = psp_vff_aff_interp(&nbs.u, nbs.v_plan, LOOP_PERIOD/1000.0, nbs.P, nbs.Knots);
+			#define DIS_TAN_ACC_FF 0
+			#define USE_TAN_ACC_FF 1
+			if(cmd.commander_mode == NURBS_SEMI)
+				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, DIS_TAN_ACC_FF);
+			else if(cmd.commander_mode == NURBS_AUTO)
+				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, USE_TAN_ACC_FF);
 			for(int i=0; i<3; i++){
 				ctrl.pos_sp[i] = psp_vff_aff(i,0)*1000;
 				ctrl.vel_ff[i] = psp_vff_aff(i,1)*1000;
@@ -316,6 +320,7 @@ int main(int argc, char **argv)
 		control_sp_msg.roll_sp = ctrl.roll_sp;
 		control_sp_msg.yaw_sp = ctrl.yaw_sp;
 		control_sp_msg.throttle = ctrl.throttle;
+		control_sp_msg.time_stamp = cmd.timestamp;
 		control_sp_pub.publish(control_sp_msg);
 		ros::spinOnce();
 		loop_rate.sleep();

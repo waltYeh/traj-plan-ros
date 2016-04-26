@@ -33,6 +33,7 @@ struct _ctrl
 	float yaw_sp;
 
 	float throttle;
+	unsigned int timestamp;
 };
 struct _out
 {
@@ -65,7 +66,7 @@ PID pos_xPID = {0,0,0,0,
 PID pos_yPID = {0,0,0,0,
 		0.3,
 		2.5, 0.03, 0.1};
-struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0};
+struct _ctrl ctrl = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},0,0,0,0,0};
 struct _out out = {{0,0,0,0},0};
 struct _est est = {{0,0,0},{0,0,0},{0,0,1.0f},0};
 float R_sp[3][3];
@@ -101,6 +102,7 @@ void control_spCallback(const r2d2::control_sp msg)
 	ctrl.roll_sp = msg.roll_sp;
 	ctrl.yaw_sp = msg.yaw_sp;
 	ctrl.throttle = msg.throttle;
+	ctrl.timestamp = msg.time_stamp;
 }
 
 float external_pid(PID *pid, float err, short dt)
@@ -233,10 +235,10 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "controller");
 	ros::NodeHandle n;
-	ros::Publisher output_pub = n.advertise<r2d2::output>("output",1000);
-	ros::Subscriber commands_sub = n.subscribe("commands",1000,commandsCallback);
-	ros::Subscriber control_sp_sub = n.subscribe("control_sp",1000,control_spCallback);
-	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
+	ros::Publisher output_pub = n.advertise<r2d2::output>("output",5);
+	ros::Subscriber commands_sub = n.subscribe("commands",5,commandsCallback);
+	ros::Subscriber control_sp_sub = n.subscribe("control_sp",5,control_spCallback);
+	ros::Subscriber states_sub = n.subscribe("states",5,statesCallback);
 	ros::Rate loop_rate(125);
 	while(!USB_connected && ros::ok()){//waiting for connection with autopilot
 		ros::spinOnce();
@@ -262,6 +264,7 @@ int main(int argc, char **argv)
 		for(int i = 0; i < 4; i++)
 			output_msg.q_sp[i] = out.q_sp[i];
 		output_msg.thrust_force = out.thrust_force;
+		output_msg.time_stamp = ctrl.timestamp;
 		output_pub.publish(output_msg);
 		ros::spinOnce();
 		loop_rate.sleep();

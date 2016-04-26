@@ -62,8 +62,8 @@ int main(int argc,char **argv)
 {
 	ros::init(argc,argv,"listener");
 	ros::NodeHandle n;
-	ros::Subscriber states_sub = n.subscribe("states",1000,statesCallback);
-	ros::Subscriber commands_sub = n.subscribe("commands",1000,commandsCallback);
+	ros::Subscriber states_sub = n.subscribe("states",5,statesCallback);
+	ros::Subscriber commands_sub = n.subscribe("commands",5,commandsCallback);
 	ros::spin();
 	return 0;
 }
