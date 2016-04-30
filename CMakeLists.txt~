@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  trail_1.msg
   states.msg
   commands.msg
   output.msg
@@ -35,10 +34,11 @@ include_directories(include
   ${wiringPi_include}
 )
 add_library(commons SHARED src/commons.cpp)
-
+add_library(nurbs SHARED src/nurbs.cpp)
 add_executable(linker src/linker.cpp)
 target_link_libraries(linker
-  ${catkin_LIBRARIES} 
+  commons 
+ ${catkin_LIBRARIES} 
   wiringPi)
 add_dependencies(linker r2d2_cpp)
 
@@ -48,11 +48,12 @@ target_link_libraries(listener
   ${catkin_LIBRARIES})
 add_dependencies(listener r2d2_cpp)
 
-add_executable(planner src/planner.cpp)
-target_link_libraries(planner 
+add_executable(commander src/commander.cpp)
+target_link_libraries(commander 
   commons
+  nurbs
   ${catkin_LIBRARIES})
-add_dependencies(planner r2d2_cpp)
+add_dependencies(commander r2d2_cpp)
 
 add_executable(controller src/controller.cpp)
 target_link_libraries(controller 

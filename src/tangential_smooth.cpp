@@ -1,6 +1,7 @@
 #include "tangential_smooth.h"
 #include "std_msgs/String.h"
 #include <math.h>
+#include <stdio.h>
 trpz::trpz()
 {
 
@@ -35,22 +36,36 @@ int trpz::trpz_gen(
     duration_vmax = (_len - (1 / _max_a * _max_v * _max_v + _max_a / _max_j * _max_v)) / _max_v;
     if (duration_vmax<0){
         duration_vmax = 0;
+        
 //        ROS_INFO("MAX_v unreachable");
 //      ROS_INFO("Please use Muellers method");
-      return 1;
+//      return 1;
     }
     blocks_t(3) = duration_vmax;
   }
-  else if(duration_amax>0 && duration_vmax<0){
+  else if(duration_vmax<0){
+    duration_vmax = 0;
+    _max_a = max_a_given;
+    float alpha = 1.0f/_max_a;
+    float betta = _max_a/_max_j;
+    float gamma = _len;
+    _max_v = (-betta + sqrt(betta * betta - 4*alpha*gamma))/2/alpha;
+    duration_amax = _max_v / _max_a - _max_a / _max_j;
+    if(duration_amax < 0){
+      duration_amax = 0;
+      _max_a = pow((-gamma * _max_j * _max_j /2), 1.0f/3.0f);
+    }
 //    ROS_INFO("MAX_v unreachable");
 //    ROS_INFO("Please use Muellers method");
-    return 2;
+    blocks_t(1) = duration_amax;
+    blocks_t(3) = duration_vmax;
+//    return 2;
   }
-  else if(duration_amax<0 && duration_vmax<0){
+//  else if(duration_amax<0 && duration_vmax<0){
 //    ROS_INFO("Both MAX_a and MAX_v unreachable");
 //    ROS_INFO("Please use Muellers method");
-    return 3;
-  }
+//    return 3;
+//  }
   else{
     blocks_t(1) = duration_amax;
     blocks_t(3) = duration_vmax;
@@ -81,6 +96,7 @@ int trpz::trpz_gen(
   _nodes_p(5) = _nodes_p(4) + _nodes_v(4) * blocks_t(4) - _max_j * blocks_t(4) * blocks_t(4) * blocks_t(4)/6;
   _nodes_p(6) = _nodes_p(5) + _nodes_v(5) * blocks_t(5) - _max_a * blocks_t(5) * blocks_t(5) / 2;
   _nodes_p(7) = _len;
+  _total_time = _nodes_t(7);
   return 0;
 }
 float trpz::jerkPlan(float t)
@@ -144,11 +160,11 @@ float trpz::accPlan(float t)
   }
   return acc;
 }
-float trpz::velPlan(float t)
+float trpz::velPlan(float t, int stage)
 {
-  float tau = t - _nodes_t(_stage - 1);
+  float tau = t - _nodes_t(stage - 1);
   float vel = 0;
-  switch (_stage){
+  switch (stage){
   case 1:
     vel = _nodes_v(0) + _max_j * tau * tau / 2;
   break;
@@ -175,11 +191,11 @@ float trpz::velPlan(float t)
   }
   return vel;
 }
-float trpz::posPlan(float t)
+float trpz::posPlan(float t, int stage)
 {
-  float tau = t - _nodes_t(_stage - 1);
+  float tau = t - _nodes_t(stage - 1);
   float pos = 0;
-  switch (_stage){
+  switch (stage){
   case 1:
     pos = _nodes_p(0) + _nodes_v(0) * tau + _max_j * tau * tau * tau / 6;
   break;
@@ -212,14 +228,75 @@ int trpz::allPlan(float t, Vector4f& javp)
   if(t > _nodes_t(_stage)){
     _stage++;
   }
-  if(_stage > 7){
+  if(_stage > 7 || t >= _total_time){
+    javp(0) = 0;
+    javp(1) = 0;
+    javp(2) = 0;
+    javp(3) = _nodes_p(7);
     return 0;//finished
   }
   javp(0) = jerkPlan(t);
   javp(1) = accPlan(t);
-  javp(2) = velPlan(t);
-  javp(3) = posPlan(t);
+  javp(2) = velPlan(t, _stage);
+  javp(3) = posPlan(t, _stage);
   return 1;
+}
+#define NEWTON 1
+#define BISECT 0 // not stable
+#define TOL 0.01
+float trpz::inv_posPlan(float pos)
+{
+  float t2, t1, tc;
+  float t, l_t;
+  int stage = 1;
+  unsigned int iteration = 0;
+  for(int i=0; i<7; i++){
+    if(pos > _nodes_p(i))
+      stage = i+1;
+  }
+  printf("stage: %d\n", stage);
+  #if BISECT
+  t2 = _nodes_t(stage);
+  t1 = _nodes_t(stage-1);
+  while((t2-t1)/2> TOL||(t2-t1)/2< -TOL){
+    iteration++;
+    tc = (t2+t1)/2;
+    if(posPlan(tc, stage) - pos == 0)
+      return tc;
+    if((posPlan(t1, stage) - pos)*(posPlan(tc, stage) - pos) < 0)
+      t2=tc;
+    else
+      t1 = tc;
+  }
+  printf("iteration: %d\n", iteration);
+  if(_total_time - t < 5*TOL)
+    t=_total_time;
+  return (t1+t2)/2;
+
+  #elif NEWTON
+  
+  t = (_nodes_t(stage) + _nodes_t(stage - 1))/2;
+  l_t = -1;
+  while((t-l_t)/2> TOL||(t-l_t)/2< -TOL){
+    iteration++;
+    l_t = t;
+    float vel = velPlan(t, stage);
+    if(vel != 0)
+      t = t - (posPlan(t, stage) - pos)/vel;
+    else {
+      printf("woops");
+      if(pos == 0)
+        t = 0;
+      else
+        t = _total_time;
+    }
+
+  }
+  printf("iteration: %d\n", iteration);
+  if(_total_time - t < 5*TOL)
+    t=_total_time;
+  return t;
+  #endif
 }
 
 

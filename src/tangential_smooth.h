@@ -13,6 +13,8 @@ public:
 		);
 	
 	int allPlan(float t, Vector4f& javp);
+	float inv_posPlan(float pos);
+	float _total_time;
 private:
 	VectorXf _nodes_t;
 	VectorXf _nodes_p;
@@ -24,8 +26,8 @@ private:
 	float _max_v;
 	float jerkPlan(float t);
 	float accPlan(float t);
-	float velPlan(float t);
-	float posPlan(float t);
+	float velPlan(float t, int stage);
+	float posPlan(float t, int stage);
 };
 
 class jopt

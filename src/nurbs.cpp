@@ -85,7 +85,7 @@ double nurbs::getDerivative(double u, int i, int k, int l)
 //changed hier in the process of interpolation
 //the function returns pos_sp, vel_ff, acc_ff in a 3*3 matrix
 //Ref Dr. Dong 6-27
-Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan_acc_ff)
+Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan_acc_ff, double tan_acc)
 {
 	static double last_V = 0, last_k = 1;
 	//last_k cannot be 0 at first
@@ -105,6 +105,7 @@ Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan
 	Vector3d pos_sp = C;
 	double k = C_u.norm();
 	Vector3d vel_ff = C_u * V / k;
+	Vector3d tangential_acc = C_u * tan_acc / k;
 	double V_k = V / k;
 	double B = -V * V * C_u.dot(C_uu) / k / k / k / k;
 	double new_u = curr_u + V_k * Ts + B * Ts * Ts / 2;
@@ -121,10 +122,12 @@ Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan
 	}else{
 		a_u = 0;
 	}
-	Vector3d tangential_acc = C_u * a_u;
+//	Vector3d tangential_acc = C_u * a_u;
+//	Vector3d tangential_acc = C_u * tan_acc;
 	Vector3d acc_ff = normal_acc;
 	if(use_tan_acc_ff){
 		acc_ff += tangential_acc;
+	//	acc_ff += tan_acc;
 	}
 	last_V = V;
 	last_k = k;
@@ -138,6 +141,7 @@ Matrix<double, 3, 3> nurbs::psp_vff_aff_interp(double V, double Ts, bool use_tan
 }
 void nurbs::waypts2nurbs (const Matrix<double, Dynamic, 3>& Q)
 {
+	_u = 0;
 	int n = Q.rows() - 1;
 	P.resize(n+1, 3);
 	Knots.resize(n + p + 2);
@@ -152,6 +156,7 @@ void nurbs::waypts2nurbs (const Matrix<double, Dynamic, 3>& Q)
 		step_len(i + 1) = step_len(i) + chord_len(i);
 	}
 	double sum_len = chord_len.sum();
+	_len = sum_len;
 	VectorXd params = step_len / sum_len;
 	for (int i = 1; i < n - p + 1; i++) {
 		VectorXd para_i = params.segment(i, p);
@@ -169,6 +174,7 @@ void nurbs::waypts2nurbs (const Matrix<double, Dynamic, 3>& Q)
 	MatrixXd PHY_t_PHY = PHY_t * PHY;
 	MatrixXd PHY_LU = PHY_t_PHY.lu() .solve(PHY_t);
 	P = PHY_LU * Q;
+	
 }
 /*
 Vector3d vel_feedforward(double u, double V)

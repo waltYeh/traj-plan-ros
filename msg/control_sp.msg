@@ -1,3 +1,5 @@
+uint32 time_stamp
+
 float32[3] pos_sp
 
 float32[3] vel_sp

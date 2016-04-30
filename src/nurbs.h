@@ -13,7 +13,8 @@ public:
 	nurbs();
 	~nurbs();
 	double _u;
-	Matrix<double, 3, 3> psp_vff_aff_interp(double V, double Ts, bool use_tan_acc_ff);
+	float _len;
+	Matrix<double, 3, 3> psp_vff_aff_interp(double V, double Ts, bool use_tan_acc_ff, double tan_acc);
 	void waypts2nurbs (const Matrix<double, Dynamic, 3>& Q);
 private:
 	int p;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "nurbs.h"
+#include "tangential_smooth.h"
 #include "commons.h"
 
 #define LOOP_RATE 125
@@ -25,6 +26,7 @@ struct _nurbs
 {
 	bool plan_ok;
 	float v_plan;
+	float tan_acc;
 };
 
 //set at 
@@ -85,13 +87,13 @@ void commandsCallback(const r2d2::commands msg)
 		if(nbs.plan_ok)
 			cmd.commander_mode = NURBS_SEMI;
 		else
-			cmd.commander_mode = WAITING_MODES;
+			cmd.commander_mode = NURBS_SEMI;
 	}
 	else if(cmd.flight_mode == RASP_NURBS_AUTO){
 		if(nbs.plan_ok)
 			cmd.commander_mode = NURBS_AUTO;
 		else
-			cmd.commander_mode = WAITING_MODES;
+			cmd.commander_mode = NURBS_AUTO;
 	}
 //	USB_connected = true;
 }
@@ -199,6 +201,7 @@ void rc_v_plan(void)
 {
 	nbs.v_plan = dead_zone_f(cmd.rc[1] * MAX_XY_VEL_MANUEL / 1024.0f, 400);
 }
+
 void rc_yaw(short dt)
 {
 	float expctYawRate = dead_zone_f(cmd.rc[3] * MAX_YAW_RATE_MANEUL / 1024.0f, 0.26f);//15 deg
@@ -217,6 +220,9 @@ Then "commander" publish the sp and ff to let "controller" do the controls
 int main(int argc, char **argv)
 {
 	nurbs nurbs1;
+	trpz trpz1;
+	float t_plan = 0.0;
+//	jopt jopt1;
 	ros::init(argc, argv, "commander");
 	ros::NodeHandle n;
 	ros::Publisher control_sp_pub = n.advertise<r2d2::control_sp>("control_sp",5);
@@ -236,6 +242,7 @@ int main(int argc, char **argv)
 		if(cmd.last_flight_mode != cmd.flight_mode){
 			reset_position_sp();
 			nbs.v_plan = 0.0;
+			nbs.tan_acc = 0.0;
 			nbs.plan_ok = false;//nurbs needs to be replanned each time
 			if(cmd.flight_mode == RASP_NURBS_SEMI||cmd.flight_mode == RASP_NURBS_AUTO){
 				//TODO
@@ -267,6 +274,8 @@ int main(int argc, char **argv)
 					Q(i,2) += Start(2);
 				}
 				nurbs1.waypts2nurbs(Q);
+				trpz1.trpz_gen(nurbs1._len, 2.5, 25, 2.5);
+				t_plan = 0.0;
 				nbs.plan_ok = true;
 			}
 		}
@@ -291,6 +300,29 @@ int main(int argc, char **argv)
 		}
 		else if(cmd.commander_mode == NURBS_AUTO){
 			//TODO get v_plan from planner
+		//	t_plan += 1.0/LOOP_RATE;
+		//	if(t_plan >= trpz1._total_time){
+		//		t_plan = trpz1._total_time;
+		//	}
+			
+		//	Vector4f javp;
+		//	int not_finished = trpz1.allPlan(t_plan, javp);
+		//	if(not_finished)
+		//		nbs.v_plan = javp(2) * 1000.0;
+		//	else
+		//		nbs.v_plan = 0;
+			float pos = nurbs1._u * nurbs1._len;
+			float t = trpz1.inv_posPlan(pos);
+			Vector4f javp;
+			int not_finished = trpz1.allPlan(t, javp);
+			if(not_finished){
+				nbs.v_plan = javp(2)*1000.0;
+				nbs.tan_acc = javp(1)*1000.0;
+			}
+			else{
+				nbs.v_plan = 0;
+				nbs.tan_acc = 0;
+			}
 		}
 		if(cmd.commander_mode == NURBS_SEMI || cmd.commander_mode == NURBS_AUTO){
 			rc_yaw(LOOP_PERIOD);
@@ -298,9 +330,9 @@ int main(int argc, char **argv)
 			#define DIS_TAN_ACC_FF 0
 			#define USE_TAN_ACC_FF 1
 			if(cmd.commander_mode == NURBS_SEMI)
-				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, DIS_TAN_ACC_FF);
+				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, DIS_TAN_ACC_FF, 0);
 			else if(cmd.commander_mode == NURBS_AUTO)
-				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, USE_TAN_ACC_FF);
+				psp_vff_aff = nurbs1.psp_vff_aff_interp(nbs.v_plan/1000.0, LOOP_PERIOD/1000.0, USE_TAN_ACC_FF, nbs.tan_acc/1000.0);
 			for(int i=0; i<3; i++){
 				ctrl.pos_sp[i] = psp_vff_aff(i,0)*1000;
 				ctrl.vel_ff[i] = psp_vff_aff(i,1)*1000;

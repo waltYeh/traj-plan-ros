@@ -35,6 +35,7 @@ include_directories(include
 )
 add_library(commons SHARED src/commons.cpp)
 add_library(nurbs SHARED src/nurbs.cpp)
+add_library(smooth SHARED src/tangential_smooth.cpp)
 add_executable(linker src/linker.cpp)
 target_link_libraries(linker
   commons 
@@ -52,6 +53,7 @@ add_executable(commander src/commander.cpp)
 target_link_libraries(commander 
   commons
   nurbs
+  smooth
   ${catkin_LIBRARIES})
 add_dependencies(commander r2d2_cpp)
 
